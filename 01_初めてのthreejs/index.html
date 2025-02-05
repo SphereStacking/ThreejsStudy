@@ -1,0 +1,242 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js"
+        }
+      }
+    </script>
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/controls/OrbitControls.js';
+      import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/loaders/GLTFLoader.js';
+      import { FontLoader } from 'https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/loaders/FontLoader.js';
+      import { TextGeometry } from 'https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/geometries/TextGeometry.js';
+
+      // サイズを指定
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+
+      // レンダラーを作成
+      const renderer = new THREE.WebGLRenderer({
+        canvas: document.querySelector("#myCanvas"),
+      });
+
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(width, height);
+
+      // ウィンドウサイズ変更時にリサイズするイベントリスナーを追加
+      window.addEventListener('resize', () => {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        renderer.setSize(width, height);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      });
+
+      // シーンを作成
+      const scene = new THREE.Scene();
+
+      // シーンの背景を黒に設定
+      scene.background = new THREE.Color(0x000000);
+
+      // カメラを作成（near/far面を明示的に設定）
+      const camera = new THREE.PerspectiveCamera(45, width / height, 1, 5000);
+      camera.position.set(0, 0, 1000);
+
+      // OrbitControlsを初期化（対象を明示的に設定）
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 0, 0);
+      controls.update();
+
+      // コントロールの設定
+      controls.enableDamping = true; // ダンピング（慣性）を有効にする
+      controls.dampingFactor = 0.05; // ダンピングの強さ
+      controls.enableZoom = true;    // ズームを有効にする
+      controls.enablePan = true;     // パンを有効にする
+      controls.minDistance = 500; // ズームインの最小距離
+      controls.maxDistance = 2000; // ズームアウトの最大距離
+
+      // 環境光を追加
+      const ambientLight = new THREE.AmbientLight(0x333333);
+      scene.add(ambientLight);
+
+      // 平行光源を作成
+      const directionalLight = new THREE.DirectionalLight(0xFFFFFF);
+      directionalLight.position.set(1, 1, 1);
+      directionalLight.intensity = 1;
+      scene.add(directionalLight);
+
+      // 惑星を作成（グレー）
+      const planetGeometry = new THREE.SphereGeometry(200, 50, 50);
+      const planetMaterial = new THREE.MeshStandardMaterial({ color: 0x808080 }); // グレーに設定
+      const planet = new THREE.Mesh(planetGeometry, planetMaterial);
+      planet.position.set(0, 0, 0); // 惑星を中央に配置
+      scene.add(planet);
+
+      // わっかを作成
+      const ringGeometry = new THREE.RingGeometry(220, 300, 64);
+      const ringMaterial = new THREE.MeshBasicMaterial({
+        color: 0xaaaaaa,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.8,
+      });
+      const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+      ring.rotation.x = Math.PI / 2; // わっかを水平に配置
+      scene.add(ring);
+
+      // 衛星を作成
+      const satelliteGeometry = new THREE.SphereGeometry(50, 30, 30);
+      const satelliteMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
+      const satellite = new THREE.Mesh(satelliteGeometry, satelliteMaterial);
+      satellite.position.set(300, 100, 0); // Y軸にオフセットを追加して軌道をずらす
+      scene.add(satellite);
+
+      // ===== 別の惑星（planet2）を追加 =====
+      // planet2の公転角度を管理する変数
+      let planet2Angle = 0;
+      // 公転軌道の半径（中央の惑星からの距離）
+      const planet2OrbitRadius = 2000;
+      // geometryとmaterialを設定
+      const planet2Geometry = new THREE.SphereGeometry(150, 50, 50);
+      const planet2Material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+      // Meshを作成
+      const planet2 = new THREE.Mesh(planet2Geometry, planet2Material);
+      // 初期位置を設定（中央の惑星からplanet2OrbitRadius離れた位置）
+      planet2.position.set(planet2OrbitRadius, 0, 0);
+      scene.add(planet2);
+
+      // 星を追加（星の形状を三角錐と立方体に変更）
+      function addStars() {
+        const starCount = 1000;
+        const tetraPositions = [];
+        const boxPositions = [];
+        for (let i = 0; i < starCount; i++) {
+          // 0～2πの範囲でtheta、acosを用いて均一分布となるphi、
+          // 指定した半径で球面上に配置
+          const theta = Math.random() * 2 * Math.PI;
+          const phi = Math.acos(2 * Math.random() - 1);
+          const r = Math.random() * 500 + 3000; // 半径: 3000～3500
+          const sx = r * Math.sin(phi) * Math.cos(theta);
+          const sy = r * Math.sin(phi) * Math.sin(theta);
+          const sz = r * Math.cos(phi);
+          if (Math.random() < 0.5) {
+            tetraPositions.push(new THREE.Vector3(sx, sy, sz));
+          } else {
+            boxPositions.push(new THREE.Vector3(sx, sy, sz));
+          }
+        }
+        
+        const starSize = 5;
+
+        // 三角錐型の星を追加
+        const tetraGeo = new THREE.TetrahedronGeometry(starSize);
+        const tetraMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const tetraInst = new THREE.InstancedMesh(tetraGeo, tetraMat, tetraPositions.length);
+        const dummy = new THREE.Object3D();
+        for (let i = 0; i < tetraPositions.length; i++) {
+          dummy.position.copy(tetraPositions[i]);
+          dummy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+          dummy.updateMatrix();
+          tetraInst.setMatrixAt(i, dummy.matrix);
+        }
+        tetraInst.instanceMatrix.needsUpdate = true;
+        scene.add(tetraInst);
+
+        // 立方体（四角形）の星を追加
+        const boxGeo = new THREE.BoxGeometry(starSize, starSize, starSize);
+        const boxMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const boxInst = new THREE.InstancedMesh(boxGeo, boxMat, boxPositions.length);
+        for (let i = 0; i < boxPositions.length; i++) {
+          dummy.position.copy(boxPositions[i]);
+          dummy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+          dummy.updateMatrix();
+          boxInst.setMatrixAt(i, dummy.matrix);
+        }
+        boxInst.instanceMatrix.needsUpdate = true;
+        scene.add(boxInst);
+      }
+
+      addStars();
+
+      // GLTFLoaderを使用して3Dモデルを読み込む
+      const loader = new GLTFLoader();
+
+      let ufoModel;
+      loader.load('./models/ufo/ufo.glb', function (glb) {
+        const model = glb.scene;
+        model.name = "model_ufo";
+        model.scale.set(80.0, 80.0, 80.0);
+        model.position.set(0,-200,0);
+        ufoModel = model;
+        scene.add(model);
+      }, undefined, function (error) {
+        console.error('An error happened', error);
+      });
+
+      // マウスの位置を取得するためのイベントリスナーを追加
+      const mouse = new THREE.Vector2();
+      window.addEventListener('mousemove', (event) => {
+        // マウスの位置を正規化されたデバイス座標に変換
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      });
+
+      tick();
+
+      // 毎フレーム時に実行されるループイベントです
+      function tick() {
+        planet.rotation.y += 0.001;
+        satellite.rotation.y += 0.005;
+
+        // 衛星を惑星の周りを回転させる
+        satellite.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.001);
+
+        // わっかを回転させる
+        ring.rotation.z += 0.001;
+
+        // マウスの位置に基づいてUFOの位置を更新
+        if (ufoModel) {
+          ufoModel.position.x = mouse.x * width / 2;
+          ufoModel.position.y = mouse.y * height / 2;
+        }
+
+        // OrbitControlsを更新
+        controls.update();
+
+        // レンダリング
+        renderer.render(scene, camera);
+
+        // 次フレームにアニメーションを渡す
+        requestAnimationFrame(tick);
+      }
+
+      // フォントを読み込んでテキストを作成
+      const fontLoader = new FontLoader();
+      fontLoader.load('./fonts/DotGothic16_Regular.json', function (font) {
+        const textGeometry = new TextGeometry('HOGE FUGA\nSPHERE', {
+          font: font,
+          size: 80,
+          height: 5,
+          curveSegments: 12,
+          bevelEnabled: true,
+          bevelThickness: 10,
+          bevelSize: 1,
+          bevelOffset: 0,
+          bevelSegments: 5
+        });
+
+        const textMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+        const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+        textMesh.position.set(200, 0, 200); // テキストの位置を設定
+        scene.add(textMesh);
+      });
+    </script>
+  </head>
+  <body>
+    <canvas id="myCanvas"></canvas>
+  </body>
+</html>
